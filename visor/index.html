@@ -64,7 +64,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; mi
 .pane { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-height: 0; min-width: 0; }
 
 .treepane { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
-.cols { display: grid; grid-template-columns: minmax(0, 1fr) 96px 92px 100px 50px 70px 66px 58px; align-items: center; column-gap: 8px; padding: 0 12px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 158px 92px 100px 50px 70px 66px 58px; align-items: center; column-gap: 8px; padding: 0 12px; }
 .thead { height: 32px; border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
 .thead .n, .row .n { text-align: right; }
 #tree { position: relative; overflow: auto; outline: none; }
@@ -150,7 +150,7 @@ td .mono { color: var(--muted); display: block; font-size: 11.5px; }
 .legend span { display: inline-flex; gap: 5px; align-items: center; }
 
 @media (max-width: 1500px) {
-  .cols { grid-template-columns: minmax(0, 1fr) 96px 92px 100px 56px; }
+  .cols { grid-template-columns: minmax(0, 1fr) 158px 92px 100px 56px; }
   .c-vch, .c-iw, .c-stk { display: none; }
   main { grid-template-columns: minmax(0, 1fr) 360px; }
 }
@@ -168,6 +168,33 @@ td .mono { color: var(--muted); display: block; font-size: 11.5px; }
   .search { flex-basis: 100%; max-width: none; }
   .bar { grid-template-columns: 90px minmax(0, 1fr) 50px; }
 }
+
+/* Edición */
+.editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-basis: 100%; }
+.editbar button, .actions button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 11px; cursor: pointer; font-size: 14px; }
+.editbar button:hover, .actions button:hover { border-color: var(--muted); }
+.editbar .b-edit { font-weight: 600; }
+.editbar .b-edit.on { background: var(--link); border-color: var(--link); color: var(--surface); }
+.dirty { font-size: 13.5px; color: var(--muted); margin-left: 4px; }
+.dirty.warn { color: var(--review); font-weight: 600; }
+.editbox { border: 1px solid var(--link); border-radius: 8px; padding: 12px; background: var(--surface-2); }
+.edtag { text-transform: none; letter-spacing: 0; color: var(--link); font-weight: 600; }
+.form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fld { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; color: var(--muted); }
+.fld.wide, .chk.wide { grid-column: 1 / -1; }
+.fld input, .fld select, .fld textarea { font: inherit; font-size: 14.5px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; width: 100%; box-sizing: border-box; min-width: 0; }
+.fld input:disabled { color: var(--muted); }
+.fld textarea { resize: vertical; }
+.fld small { font-size: 12px; color: var(--link); }
+.fld small:empty { display: none; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions .b-pri { background: var(--link); border-color: var(--link); color: var(--surface); font-weight: 600; }
+.actions .b-del { color: var(--review); border-color: var(--review); background: none; }
+#delconfirm { display: flex; flex-direction: column; gap: 8px; }
+#delconfirm[hidden] { display: none; }
+.row.ed .tx::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--link); margin-right: 6px; vertical-align: 1px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 50; background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 6px; font-size: 14.5px; max-width: calc(100% - 32px); box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
 </style>
 
 <div class="app">
@@ -192,6 +219,13 @@ td .mono { color: var(--muted); display: block; font-size: 11.5px; }
       </div>
       <button type="button" class="btn-review" id="btnRev" hidden>Para revisar</button>
     </div>
+    <div class="editbar" id="editbar" hidden>
+      <button type="button" class="b-edit" id="btnEdit">Modo edición</button>
+      <button type="button" id="btnSave" title="Descarga una copia de este HTML con todos los cambios">Guardar HTML</button>
+      <button type="button" id="btnXls" title="Descarga la estructura completa y la hoja de cambios en Excel">Exportar Excel</button>
+      <button type="button" id="btnChg">Ver cambios</button>
+      <span class="dirty" id="dirty"></span>
+    </div>
   </header>
 
   <main>
@@ -215,6 +249,8 @@ td .mono { color: var(--muted); display: block; font-size: 11.5px; }
   </main>
 </div>
 
+<div class="toast" id="toast" role="status" hidden></div>
+<script id="bom-data" type="application/json"></script>
 <script>
 (() => {
 const LV_SHORT = ["PL", "PR", "UB", "LN", "FN", "EQ", "SE", "SSE", "MAT"];
@@ -224,8 +260,20 @@ const DEPTH_LABEL = { 1: "Procesos", 2: "Líneas", 3: "Funciones", 4: "Equipos",
 const fmt = new Intl.NumberFormat("es-BO", { maximumFractionDigits: 2 });
 
 let D, nodes, mats, N, parent, end, expanded, visible = [], posOf, sel = -1;
-let matCount, matFirst, revList = [];
+let matCount, matFirst, matIndex, revList = [], cambios = [], hayNode = null, hayMat = null;
+let editMode = false, dirty = 0;
 const $ = (id) => document.getElementById(id);
+// Copia de la página tal como se cargó, para poder guardar una nueva versión con los datos editados.
+const EMBED_EL = document.getElementById("bom-data");
+const SHELL = (() => {
+  const c = document.documentElement.cloneNode(true);
+  const d = c.querySelector("#bom-data");
+  if (d) d.textContent = "@@BOMDATA@@";
+  return "<!doctype html>\n" + c.outerHTML;
+})();
+// Dentro del visor de claude.ai (iframe) no se pueden descargar archivos: allí la página es solo de consulta.
+const CAN_SAVE = window.self === window.top;
+const LV_CHILDREN = { 0: [1], 1: [3, 5], 2: [3, 5], 3: [4, 5], 4: [5, 8], 5: [6, 8], 6: [7, 8], 7: [8], 8: [] };
 const treeEl = $("tree"), rowsEl = $("rows"), spacerEl = $("spacer"), detailEl = $("detail");
 const ROW = 30;
 
@@ -247,14 +295,17 @@ const obsOf = (i) => nodes[i][8] || "";
 const cant = (i) => nodes[i][4] || 0, vch = (i) => nodes[i][5] || 0, iw = (i) => nodes[i][6] || 0;
 const hasKids = (i) => end[i] > i + 1;
 
-fetch("datos.json").then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+const embedded = EMBED_EL && EMBED_EL.textContent.trim();
+(embedded ? Promise.resolve().then(() => JSON.parse(embedded)) : fetch("datos.json").then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }))
   .then(init)
   .catch((e) => { const l = $("loading"); l.textContent = "No se pudieron cargar los datos (" + e.message + "). Recargue la página."; l.classList.add("err"); });
 
-function init(d) {
-  D = d; nodes = d.nodos; mats = d.materiales; N = nodes.length;
-  parent = new Int32Array(N); end = new Int32Array(N); expanded = new Uint8Array(N); posOf = new Int32Array(N);
+function index() {
+  N = nodes.length;
+  parent = new Int32Array(N); end = new Int32Array(N); posOf = new Int32Array(N);
   matCount = new Int32Array(mats.length); matFirst = new Int32Array(mats.length).fill(-1);
+  matIndex = new Map(mats.map((M, k) => [M[0], k]));
+  revList = [];
   const stack = [];
   let eq = 0;
   for (let i = 0; i < N; i++) {
@@ -267,10 +318,18 @@ function init(d) {
     if (nodes[i][7]) revList.push(i);
   }
   while (stack.length) end[stack.pop()] = N;
+  hayNode = null;
+  $("stats").innerHTML = `BO04-5800C · <b>${fmt.format(eq)}</b> equipos padre · <b>${fmt.format(matCount.filter(Boolean).length)}</b> materiales distintos · <b>${fmt.format(N)}</b> filas`;
+  $("btnRev").textContent = `Para revisar · ${fmt.format(revList.length)}`;
+}
 
+function init(d) {
+  D = d; nodes = d.nodos; mats = d.materiales; cambios = d.cambios || [];
+  index();
+  expanded = new Uint8Array(N);
   $("loading").remove();
-  $("stats").innerHTML = `BO04-5800C · <b>${fmt.format(eq)}</b> equipos padre · <b>${fmt.format(mats.length)}</b> materiales distintos · <b>${fmt.format(N)}</b> filas`;
-  const br = $("btnRev"); br.hidden = false; br.textContent = `Para revisar · ${fmt.format(revList.length)}`;
+  $("btnRev").hidden = false;
+  if (CAN_SAVE) { $("editbar").hidden = false; updateDirty(); }
 
   expandTo(2);
   select(0, false);
@@ -307,7 +366,7 @@ function render() {
     const pad = dep(i) * INDENT;
     const caret = hasKids(i) ? `<button type="button" class="car${expanded[i] ? " open" : ""}" data-t="${i}" aria-label="${expanded[i] ? "Cerrar" : "Abrir"}">${CARET}</button>` : '<span class="car leaf"></span>';
     const cont = contOf(i);
-    html += `<div class="row cols l${L}${i === sel ? " sel" : ""}${revOf(i) ? " rev" : ""}" data-i="${i}">` +
+    html += `<div class="row cols l${L}${i === sel ? " sel" : ""}${revOf(i) ? " rev" : ""}${nodes[i][9] ? " ed" : ""}" data-i="${i}">` +
       `<span class="cell-name" style="padding-left:${pad}px">${caret}<span class="lv lv-${L}">${LV_SHORT[L]}</span><span class="tx">${esc(nameOf(i))}</span>${cont ? `<span class="cnt">${esc(cont)}</span>` : ""}</span>` +
       `<span class="code mono c-code">${esc(codeOf(i))}</span>` +
       `<span class="tag mono c-tag">${esc(tagOf(i))}</span>` +
@@ -377,10 +436,12 @@ function renderDetail(i) {
   h += `<div class="d-head"><span class="lv lv-${L}" style="align-self:flex-start">${esc(D.niveles[L])}</span><h2>${esc(nameOf(i))}</h2>` +
        `<div class="idline">${copyBtn(codeOf(i))}${tagOf(i) ? `<span class="mono">TAG ${esc(tagOf(i))}</span>` : ""}</div></div>`;
   if (revOf(i) || obsOf(i)) h += `<div class="alert"><b>${revOf(i) ? "Para revisar" : "Observación"}</b>${esc(obsOf(i))}</div>`;
+  if (editMode) h += editForms(i);
   if (m) h += materialDetail(i); else h += nodeDetail(i);
   if (L !== 0 && L !== 1 && L !== 2) h += `<div class="sec"><div class="h3">Fuentes que lo registran</div>${chips(flagsOf(i))}</div>`;
   detailEl.innerHTML = h;
   detailEl.scrollTop = 0;
+  if (editMode) syncAddForm();
 }
 
 function materialDetail(i) {
@@ -441,7 +502,251 @@ function nodeDetail(i) {
   return h;
 }
 
+/* ---------- Edición ---------- */
+function field(id, label, value, opts = {}) {
+  const t = opts.type || "text";
+  return `<label class="fld${opts.wide ? " wide" : ""}"><span>${label}</span>` +
+    (t === "textarea" ? `<textarea id="${id}" rows="2">${esc(value)}</textarea>`
+      : t === "select" ? `<select id="${id}">${opts.options.map(([v, tx]) => `<option value="${v}"${String(v) === String(value) ? " selected" : ""}>${esc(tx)}</option>`).join("")}</select>`
+      : `<input id="${id}" type="${t}" value="${esc(value)}"${t === "number" ? ' step="any" min="0"' : ""}${opts.list ? ` list="${opts.list}"` : ""}>`) +
+    ("note" in opts ? `<small>${opts.note}</small>` : "") + "</label>";
+}
+
+function editForms(i) {
+  const L = lvl(i), m = L === 8;
+  let h = `<div class="sec editbox"><div class="h3">Editar esta fila${nodes[i][9] ? ' <span class="edtag">editada</span>' : ""}</div><div class="form">`;
+  if (m) {
+    const M = mat(i), n = matCount[nodes[i][2]];
+    h += field("e-cant", "Cant. instalada aquí", cant(i) || "", { type: "number" });
+    h += field("e-mname", "Denominación del material", M[1], { wide: true, note: n > 1 ? `Cambia en los ${fmt.format(n)} lugares donde aparece` : "" });
+    h += field("e-stock", "Stock libre (MB52)", M[3] || "", { type: "number", note: n > 1 ? "Igual para todos los lugares" : "" });
+    h += field("e-tipo", "Tipo material", M[2], { type: "select", options: D.tipos.map((t, k) => [k, t || "Sin dato"]) });
+  } else {
+    h += field("e-code", L === 5 || L === 6 || L === 7 ? "N.º de equipo" : "Ubicación técnica", codeOf(i));
+    h += field("e-tag", "TAG", tagOf(i));
+    h += field("e-name", "Denominación", nameOf(i), { wide: true });
+  }
+  h += field("e-obs", "Observación", obsOf(i), { type: "textarea", wide: true });
+  h += `<label class="chk wide"><input id="e-rev" type="checkbox"${revOf(i) ? " checked" : ""}> Para revisar</label>`;
+  h += `</div><div class="actions"><button type="button" class="b-pri" data-act="save">Aplicar cambios</button>`;
+  if (L !== 0) h += `<button type="button" class="b-del" data-act="del">Eliminar…</button>`;
+  h += `</div><div id="delconfirm" hidden></div></div>`;
+
+  const kids = LV_CHILDREN[L];
+  if (kids.length) {
+    h += `<div class="sec editbox"><div class="h3">Agregar dentro de este elemento</div><div class="form">`;
+    h += field("a-lvl", "Tipo", kids[kids.length - 1], { type: "select", options: kids.map((k) => [k, D.niveles[k]]) });
+    h += field("a-code", "Código", "", { note: "" });
+    h += field("a-name", "Denominación", "", { wide: true });
+    h += field("a-tag", "TAG", "");
+    h += field("a-cant", "Cantidad", "", { type: "number" });
+    h += `</div><div class="actions"><button type="button" class="b-pri" data-act="add">Agregar</button></div></div>`;
+  }
+  return h;
+}
+
+function syncAddForm() {
+  const sl = $("a-lvl");
+  if (!sl) return;
+  const isM = +sl.value === 8;
+  $("a-tag").closest(".fld").hidden = isM;
+  $("a-cant").closest(".fld").hidden = !isM;
+  const note = $("a-code").closest(".fld").querySelector("small");
+  const code = $("a-code").value.trim();
+  if (isM && matIndex.has(code)) {
+    const M = mats[matIndex.get(code)];
+    $("a-name").value = M[1]; $("a-name").disabled = true;
+    note.textContent = `Material existente · stock ${n0(M[3]) || 0}`;
+  } else {
+    if ($("a-name").disabled) $("a-name").value = "";
+    $("a-name").disabled = false;
+    note.textContent = isM && code ? "Material nuevo: se crea con este código" : "";
+  }
+}
+detailEl.addEventListener("input", (e) => { if (e.target.id === "a-code" || e.target.id === "a-lvl") syncAddForm(); });
+detailEl.addEventListener("change", (e) => { if (e.target.id === "a-lvl") syncAddForm(); });
+
+function numVal(id) { const v = parseFloat(String($(id).value).replace(",", ".")); return isFinite(v) && v > 0 ? v : 0; }
+function log(accion, i, campo, antes, despues) {
+  cambios.push({ fecha: new Date().toISOString().slice(0, 16).replace("T", " "), accion, nivel: D.niveles[lvl(i)], codigo: codeOf(i), denominacion: nameOf(i),
+    padre: parent[i] >= 0 ? codeOf(parent[i]) + " · " + nameOf(parent[i]) : "", campo, antes: antes ?? "", despues: despues ?? "" });
+}
+function markDirty() { dirty++; updateDirty(); }
+function updateDirty() {
+  const s = $("dirty");
+  s.textContent = dirty ? `${fmt.format(dirty)} cambio${dirty === 1 ? "" : "s"} sin guardar` : cambios.length ? `${fmt.format(cambios.length)} cambios registrados` : "Sin cambios";
+  s.classList.toggle("warn", dirty > 0);
+}
+
+function applyEdit(i) {
+  const n = nodes[i], L = lvl(i), before = cambios.length;
+  const set = (k, campo, v, old) => { if (String(old ?? "") !== String(v ?? "")) { log("Editar", i, campo, old, v); n[k] = v; } };
+  if (L === 8) {
+    set(4, "Cant. instalada", numVal("e-cant"), cant(i) || 0);
+    const M = mat(i), nm = $("e-mname").value.trim(), st = numVal("e-stock"), tp = +$("e-tipo").value;
+    if (nm && nm !== M[1]) { log("Editar", i, "Denominación material", M[1], nm); M[1] = nm; }
+    if (st !== (M[3] || 0)) { log("Editar", i, "Stock libre", M[3] || 0, st); M[3] = st; }
+    if (tp !== M[2]) { log("Editar", i, "Tipo material", D.tipos[M[2]], D.tipos[tp]); M[2] = tp; }
+  } else {
+    const code = $("e-code").value.trim(), nm = $("e-name").value.trim();
+    if (code) set(2, "Código", code, n[2]);
+    set(4, "TAG", $("e-tag").value.trim(), n[4] || "");
+    if (nm) set(3, "Denominación", nm, n[3]);
+  }
+  set(8, "Observación", $("e-obs").value.trim(), n[8] || "");
+  const rv = $("e-rev").checked ? 1 : 0;
+  if (rv !== (n[7] ? 1 : 0)) { log("Editar", i, "Para revisar", n[7] ? "SÍ" : "", rv ? "SÍ" : ""); n[7] = rv; }
+  const k = cambios.length - before;
+  if (!k) { toast("No hay cambios que aplicar"); return; }
+  n[9] = 1; dirty += k; updateDirty(); index(); render(); renderDetail(i);
+  toast(`${k} cambio${k === 1 ? "" : "s"} aplicado${k === 1 ? "" : "s"}`);
+}
+
+function growExpanded(at, remove, insert) {
+  const e = new Uint8Array(expanded.length - remove + insert);
+  e.set(expanded.subarray(0, at)); e.set(expanded.subarray(at + remove), at + insert);
+  expanded = e;
+}
+
+function addChild(p) {
+  const L = +$("a-lvl").value, code = $("a-code").value.trim();
+  let name = $("a-name").value.trim();
+  if (!code) { toast("Escriba el código"); $("a-code").focus(); return; }
+  let row;
+  if (L === 8) {
+    let mi = matIndex.get(code);
+    if (mi === undefined) {
+      if (!name) { toast("Escriba la denominación del material nuevo"); $("a-name").focus(); return; }
+      mi = mats.length; mats.push([code, name, 0, 0]);
+    }
+    row = [8, dep(p) + 1, mi, 0, numVal("a-cant"), 0, 0, 0, "", 1];
+  } else {
+    if (!name) { toast("Escriba la denominación"); $("a-name").focus(); return; }
+    row = [L, dep(p) + 1, code, name, $("a-tag").value.trim(), "", 0, 0, "", 1];
+  }
+  const at = end[p];
+  nodes.splice(at, 0, row);
+  growExpanded(at, 0, 1);
+  expanded[p] = 1;
+  index();
+  log("Agregar", at, L === 8 ? "Cantidad" : "", "", L === 8 ? row[4] : "");
+  markDirty(); rebuild(); select(at, true);
+  toast(`${D.niveles[L]} agregado`);
+}
+
+function askDelete(i) {
+  const box = $("delconfirm"), k = end[i] - i - 1;
+  box.hidden = false;
+  box.innerHTML = `<div class="alert"><b>Eliminar</b>Se quitará «${esc(nameOf(i))}»${k ? ` y las ${fmt.format(k)} filas que cuelgan de él` : ""}. Puede deshacerlo cerrando sin guardar.</div>
+    <div class="actions"><button type="button" class="b-del" data-act="delok">Sí, eliminar</button><button type="button" data-act="delno">Cancelar</button></div>`;
+}
+function doDelete(i) {
+  const p = parent[i], k = end[i] - i;
+  log("Eliminar", i, k > 1 ? `con ${k - 1} filas debajo` : "", "", "");
+  if (p >= 0) nodes[p][9] = 1;
+  nodes.splice(i, k);
+  growExpanded(i, k, 0);
+  index(); markDirty(); rebuild(); select(Math.max(0, p), true);
+  toast("Eliminado");
+}
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "_");
+
+function saveHtml() {
+  const data = JSON.stringify({ ...D, nodos: nodes, materiales: mats, cambios }).replace(/</g, "\\u003c");
+  download(new Blob([SHELL.replace("@@BOMDATA@@", () => data)], { type: "text/html;charset=utf-8" }), `BOM_Viacha_${stamp()}.html`);
+  dirty = 0; updateDirty();
+  toast("Archivo guardado en Descargas. Abra ese archivo la próxima vez.");
+}
+
+function excelRows() {
+  const head = ["Nivel", "Ubic.técn. / Código", "Denominación", "TAG", "Contenido", "VCH", "TAX", "Lista", "Repuesto", "IH08",
+    "Cant. instalada (TAX)", "Consumo VCH 2018-26", "Consumo IW13", "Stock libre MB52", "Tipo material", "Revisar", "Observación", "Editado"];
+  const rows = [head];
+  for (let i = 0; i < N; i++) {
+    const m = isMat(i), f = flagsOf(i);
+    rows.push([D.niveles[lvl(i)], codeOf(i), nameOf(i), tagOf(i), contOf(i), ...[0, 1, 2, 3, 4].map((k) => (f & (1 << k) ? "✓" : "")),
+      m ? cant(i) || "" : "", m ? vch(i) || "" : "", m ? iw(i) || "" : "", m ? mat(i)[3] || "" : "", m ? D.tipos[mat(i)[2]] : "",
+      revOf(i) ? "SÍ" : "", obsOf(i), nodes[i][9] ? "SÍ" : ""]);
+  }
+  return rows;
+}
+function exportExcel() {
+  toast("Preparando Excel…");
+  const go = () => {
+    const XLSX = window.XLSX, wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(excelRows());
+    ws["!rows"] = [{}].concat(nodes.map((n) => ({ level: Math.min(7, n[1]) })));
+    ws["!cols"] = [12, 22, 48, 14, 24, 5, 5, 5, 8, 5, 10, 10, 10, 10, 13, 8, 50, 8].map((w) => ({ wch: w }));
+    ws["!autofilter"] = { ref: "A1:R1" };
+    XLSX.utils.book_append_sheet(wb, ws, "Estructura");
+    const ch = [["Fecha", "Acción", "Nivel", "Código", "Denominación", "Padre", "Campo", "Antes", "Después"]]
+      .concat(cambios.map((c) => [c.fecha, c.accion, c.nivel, c.codigo, c.denominacion, c.padre, c.campo, c.antes, c.despues]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ch), "Cambios");
+    XLSX.writeFile(wb, `BOM_Viacha_${stamp()}.xlsx`, { compression: true });
+    toast("Excel guardado en Descargas");
+  };
+  if (window.XLSX) { setTimeout(go, 30); return; }
+  const s = document.createElement("script");
+  s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+  s.onload = go;
+  s.onerror = () => {
+    // Sin internet: CSV que Excel abre directamente.
+    const csv = excelRows().map((r) => r.map((v) => { const t = String(v ?? ""); return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }).join(";")).join("\r\n");
+    download(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }), `BOM_Viacha_${stamp()}.csv`);
+    toast("Sin internet: se guardó como CSV (se abre en Excel)");
+  };
+  document.head.appendChild(s);
+}
+
+function showChanges() {
+  resItems = [];
+  let h = `<div class="group">Cambios registrados · ${fmt.format(cambios.length)}</div>`;
+  if (!cambios.length) h += `<div class="empty">Todavía no hay cambios. Active «Modo edición», elija una fila y use el formulario de la ficha.</div>`;
+  for (const c of cambios.slice().reverse().slice(0, 400)) {
+    let i = -1;
+    if (c.accion !== "Eliminar") for (let k = 0; k < N; k++) if (codeOf(k) === c.codigo) { i = k; break; }
+    resItems.push(i);
+    const what = c.accion === "Editar" ? `${esc(c.campo)}: ${esc(c.antes) || "—"} → ${esc(c.despues) || "—"}` : `${esc(c.accion)}${c.campo ? " · " + esc(c.campo) : ""}`;
+    h += `<div class="res" data-k="${resItems.length - 1}"><span class="lv">${esc(c.accion.slice(0, 3).toUpperCase())}</span><span class="nm">${esc(c.denominacion)} <span class="mono">${esc(c.codigo)}</span></span><span class="meta">${what} · ${esc(c.fecha)}</span></div>`;
+  }
+  showResults(h); resEl.dataset.mode = "chg";
+}
+
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3500); }
+
+if (CAN_SAVE) {
+  $("btnEdit").addEventListener("click", () => {
+    editMode = !editMode;
+    $("btnEdit").classList.toggle("on", editMode);
+    $("btnEdit").textContent = editMode ? "Salir de edición" : "Modo edición";
+    document.body.classList.toggle("editing", editMode);
+    if (sel >= 0) renderDetail(sel);
+  });
+  $("btnSave").addEventListener("click", saveHtml);
+  $("btnXls").addEventListener("click", exportExcel);
+  $("btnChg").addEventListener("click", (e) => { e.stopPropagation(); if (!resEl.hidden && resEl.dataset.mode === "chg") closeResults(); else showChanges(); });
+  window.addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+}
+
 detailEl.addEventListener("click", (e) => {
+  const act = e.target.closest("[data-act]");
+  if (act) {
+    const a = act.dataset.act;
+    if (a === "save") applyEdit(sel);
+    else if (a === "add") addChild(sel);
+    else if (a === "del") askDelete(sel);
+    else if (a === "delok") doDelete(sel);
+    else if (a === "delno") $("delconfirm").hidden = true;
+    return;
+  }
   const c = e.target.closest("[data-copy]");
   if (c) {
     const txt = c.dataset.copy, small = c.querySelector("small");
@@ -457,7 +762,7 @@ detailEl.addEventListener("click", (e) => {
 });
 
 /* ---------- Búsqueda ---------- */
-let hayNode = null, hayMat = null, resItems = [], resOn = -1;
+let resItems = [], resOn = -1;
 const qEl = $("q"), resEl = $("results");
 function buildHay() {
   hayNode = []; hayMat = mats.map((M) => norm(M[0] + " " + M[1]));
@@ -505,7 +810,7 @@ qEl.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowUp") { e.preventDefault(); markOn(Math.max(0, resOn - 1)); }
   else if (e.key === "Enter") { e.preventDefault(); goto(resItems[Math.max(0, resOn)]); }
 });
-resEl.addEventListener("click", (e) => { const r = e.target.closest(".res"); if (r) goto(resItems[+r.dataset.k]); });
+resEl.addEventListener("click", (e) => { const r = e.target.closest(".res"); if (r && resItems[+r.dataset.k] >= 0) goto(resItems[+r.dataset.k]); });
 document.addEventListener("click", (e) => { if (!e.target.closest(".search") && e.target.id !== "btnRev") closeResults(); });
 
 $("btnRev").addEventListener("click", () => {
